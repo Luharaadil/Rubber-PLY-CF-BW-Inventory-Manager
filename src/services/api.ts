@@ -149,8 +149,8 @@ export async function fetchInventoryData(): Promise<{ records: InventoryRawRecor
                 }
 
                 allRecords.push({
-                    section: String(row[0] || ""),
-                    rubberCode: String(row[1] || ""),
+                    section: String(row[0] || "").trim(),
+                    rubberCode: String(row[1] || "").trim(),
                     weight: 0,
                     batchesOrRolls: batches,
                     timestamp: parsedDate,
@@ -159,7 +159,19 @@ export async function fetchInventoryData(): Promise<{ records: InventoryRawRecor
             }
         }
         
-        return { records: allRecords, errors: [] };
+        // Keep only the latest entry per section and rubberCode
+        const latestRecordsMap = new Map<string, InventoryRawRecord>();
+        for (const record of allRecords) {
+            const key = `${record.section}_${record.rubberCode}`;
+            const existing = latestRecordsMap.get(key);
+            if (!existing || record.timestamp.getTime() >= existing.timestamp.getTime()) {
+                latestRecordsMap.set(key, record);
+            }
+        }
+        
+        const finalRecords = Array.from(latestRecordsMap.values());
+        
+        return { records: finalRecords, errors: [] };
     } catch (err: any) {
         console.warn("Failed to load inventory from sheet: ", err);
         return { records: [], errors: ["Failed to load from Google Sheet. Ensure 'Anyone with the link can view' is enabled."] };

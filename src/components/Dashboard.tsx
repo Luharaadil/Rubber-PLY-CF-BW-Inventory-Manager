@@ -98,10 +98,28 @@ export function Dashboard() {
     setSaving(true);
     setError(null);
     try {
-      const success = await saveInventoryData(editingRecords);
+      // Find modified records by comparing with allRecords
+      const modifiedRecords = editingRecords.filter(er => {
+        const orig = allRecords.find(ar => ar.section === er.section && ar.rubberCode === er.rubberCode);
+        if (!orig) return true; // New record
+        return orig.batchesOrRolls !== er.batchesOrRolls;
+      });
+
+      if (modifiedRecords.length === 0) {
+        setEditMode(false);
+        setSaving(false);
+        return;
+      }
+
+      const success = await saveInventoryData(modifiedRecords);
       if (success) {
+        // Optimistically update allRecords so the user immediately sees the changes
+        // before the background sheet refresh completes.
         setAllRecords([...editingRecords]);
         setEditMode(false);
+        setSaving(false);
+        // Delay background reload to give Apps Script time to finish writing to the sheet
+        setTimeout(() => loadData(), 4000);
       } else {
         setError("Failed to save changes. Unknown API error.");
       }
@@ -190,9 +208,23 @@ export function Dashboard() {
 
   const getFilteredRecords = () => {
     const records = editMode ? editingRecords : allRecords;
+    const excludedNames = ["RM32", "RM16", "RM55", "0751NPT", "7331NPT", "0809F", "0824NP"].map(n => n.toUpperCase());
+    
     return records.filter(r => {
+      if (excludedNames.includes(r.rubberCode.toUpperCase())) return false;
+      
       let sMatch = filterSection === "ALL" || r.section?.toLowerCase() === filterSection.toLowerCase();
-      let cMatch = filterCategory === "ALL" || r.rubberCode?.toLowerCase().includes(filterCategory.toLowerCase());
+      
+      let cMatch = false;
+      const isRubber = /^\d{4}F$/i.test(r.rubberCode);
+      if (filterCategory === "ALL") {
+        cMatch = true;
+      } else if (filterCategory === "Rubber") {
+        cMatch = isRubber;
+      } else if (filterCategory === "Other") {
+        cMatch = !isRubber;
+      }
+
       return sMatch && cMatch;
     }).sort((a, b) => a.section.localeCompare(b.section) || a.rubberCode.localeCompare(b.rubberCode));
   };
@@ -283,9 +315,7 @@ export function Dashboard() {
             >
               <option value="ALL">ALL</option>
               <option value="Rubber">Rubber</option>
-              <option value="PLY">PLY</option>
-              <option value="Chafer">Chafer</option>
-              <option value="BW">BW</option>
+              <option value="Other">Other</option>
             </select>
           </div>
         </div>
