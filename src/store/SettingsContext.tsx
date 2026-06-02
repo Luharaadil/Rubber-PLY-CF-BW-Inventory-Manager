@@ -1,28 +1,23 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { AppSettings, ShiftType } from "../types";
+import { AppSettings, MaterialUsageRate } from "../types";
 
 const DEFAULT_SETTINGS: AppSettings = {
-  shifts: {
-    A: { start: "05:00", end: "11:00" },
-    B: { start: "11:00", end: "19:00" },
-    C: { start: "19:00", end: "05:00" },
-  },
-  consumptionRates: {},
+  materialUsages: [],
 };
 
 interface SettingsContextType {
   settings: AppSettings;
-  updateShift: (shift: ShiftType, start: string, end: string) => void;
-  updateConsumption: (rubberCode: string, rate: number) => void;
-  removeConsumption: (rubberCode: string) => void;
-  syncConsumption: (rates: Record<string, number>) => void;
+  updateMaterialUsage: (index: number, updated: MaterialUsageRate) => void;
+  addMaterialUsage: (rate: MaterialUsageRate) => void;
+  removeMaterialUsage: (index: number) => void;
+  syncMaterialUsages: (rates: MaterialUsageRate[]) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem("inventory_settings");
+    const saved = localStorage.getItem("inventory_settings_v2");
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -34,46 +29,41 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    localStorage.setItem("inventory_settings", JSON.stringify(settings));
+    localStorage.setItem("inventory_settings_v2", JSON.stringify(settings));
   }, [settings]);
 
-  const updateShift = (shift: ShiftType, start: string, end: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      shifts: {
-        ...prev.shifts,
-        [shift]: { start, end },
-      },
-    }));
-  };
-
-  const updateConsumption = (rubberCode: string, rate: number) => {
-    setSettings((prev) => ({
-      ...prev,
-      consumptionRates: {
-        ...prev.consumptionRates,
-        [rubberCode]: rate,
-      },
-    }));
-  };
-
-  const removeConsumption = (rubberCode: string) => {
+  const updateMaterialUsage = (index: number, updated: MaterialUsageRate) => {
     setSettings((prev) => {
-      const copy = { ...prev };
-      delete copy.consumptionRates[rubberCode];
-      return copy;
+      const copy = [...prev.materialUsages];
+      copy[index] = updated;
+      return { ...prev, materialUsages: copy };
     });
   };
 
-  const syncConsumption = (rates: Record<string, number>) => {
+  const addMaterialUsage = (rate: MaterialUsageRate) => {
     setSettings((prev) => ({
       ...prev,
-      consumptionRates: rates
+      materialUsages: [...prev.materialUsages, rate],
+    }));
+  };
+
+  const removeMaterialUsage = (index: number) => {
+    setSettings((prev) => {
+      const copy = [...prev.materialUsages];
+      copy.splice(index, 1);
+      return { ...prev, materialUsages: copy };
+    });
+  };
+
+  const syncMaterialUsages = (usages: MaterialUsageRate[]) => {
+    setSettings((prev) => ({
+      ...prev,
+      materialUsages: usages,
     }));
   };
 
   return (
-    <SettingsContext.Provider value={{ settings, updateShift, updateConsumption, removeConsumption, syncConsumption }}>
+    <SettingsContext.Provider value={{ settings, updateMaterialUsage, addMaterialUsage, removeMaterialUsage, syncMaterialUsages }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -84,3 +74,4 @@ export function useSettings() {
   if (!context) throw new Error("useSettings must be used within SettingsProvider");
   return context;
 }
+

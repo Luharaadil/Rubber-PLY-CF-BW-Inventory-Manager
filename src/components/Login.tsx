@@ -50,7 +50,7 @@ export function Login() {
             MAXXIS RUBBER INDIA PVT LTD
           </h2>
           <h3 className="mt-2 text-xl font-bold tracking-tight text-indigo-600">
-            Final rubber inventory
+            Rubber/PLY/CF/BW Inventory Manager
           </h3>
         </div>
         <h4 className="mt-6 text-center text-lg font-bold tracking-tight text-slate-900">

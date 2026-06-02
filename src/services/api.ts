@@ -1,5 +1,5 @@
 import { parse, isValid } from "date-fns";
-import { InventoryRawRecord } from "../types";
+import { InventoryRawRecord, MaterialUsageRate } from "../types";
 
 const MACRO_URL = "https://script.google.com/macros/s/AKfycbwgP4jhdt0rom8RB3r3yvc42Xg-kgB4FgJ2DQTVOFHTir1g6mVFjCAMW5BB0dpbFbSARg/exec";
 const NEW_SHEET_ID = "1GHwq2tHt0ZDwuGHfTZSov6b2JgfURUKt7c8WLZWPGKs";
@@ -71,14 +71,17 @@ function parseSheetDate(dateStr: string): Date | null {
 export async function fetchUsers(): Promise<Record<string, {password: string, role: string}>> {
   const users: Record<string, {password: string, role: string}> = {};
   try {
-    const rows = await fetchSheetData(NEW_SHEET_ID, "Users");
+    const rows = await fetchSheetData(NEW_SHEET_ID, undefined, "1782887198");
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if (row.length >= 3 && row[0]) {
-        users[row[0].trim()] = {
-          password: String(row[1] || "").trim(),
-          role: String(row[2] || "").trim(),
-        };
+      if (row && row.length >= 2) {
+        const userIdVal = row[0] ? String(row[0]).trim() : "";
+        if (userIdVal) {
+          users[userIdVal] = {
+            password: row[1] ? String(row[1]).trim() : "",
+            role: row[2] ? String(row[2]).trim() : "",
+          };
+        }
       }
     }
   } catch (err) {
@@ -87,34 +90,45 @@ export async function fetchUsers(): Promise<Record<string, {password: string, ro
   return users;
 }
 
-export async function fetchConsumptionRates(): Promise<Record<string, number>> {
-  const consumptionRates: Record<string, number> = {};
-  
+export async function fetchConsumptionRates(): Promise<MaterialUsageRate[]> {
+  const usageRates: MaterialUsageRate[] = [];
   try {
-    const rows = await fetchSheetData(CONSUMPTION_SHEET_ID, undefined, "1995297640");
-    // O column is index 14, T column is index 19. Start from 4th row (index 3)
-    for (let i = 3; i < rows.length; i++) {
+    const rows = await fetchSheetData(NEW_SHEET_ID, undefined, "1582193389");
+    for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if (row.length > 19) {
-        const rawMaterial = String(row[14] || "");
-        const batchesStr = String(row[19] || "");
-        
-        const rubberMatch = rawMaterial.match(/^(\d{4}F)/i);
-        const rubberCode = rubberMatch ? rubberMatch[1].toUpperCase() : rawMaterial.trim();
-        
-        if (rubberCode) {
-          const batches = parseFloat(batchesStr);
-          if (!isNaN(batches)) {
-            consumptionRates[rubberCode] = batches;
-          }
-        }
+      if (row.length >= 3 && (row[0] || row[2])) {
+        usageRates.push({
+          section: String(row[0] || "").trim(),
+          category: String(row[1] || "").trim(),
+          materialName: String(row[2] || "").trim(),
+          usagePerHour: parseFloat(row[3]) || 0
+        });
       }
     }
   } catch (err) {
     console.error("Error fetching consumption rates:", err);
   }
-  
-  return consumptionRates;
+  return usageRates;
+}
+
+export async function saveConsumptionRates(rates: MaterialUsageRate[]): Promise<boolean> {
+  try {
+    fetch(MACRO_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain",
+      },
+      body: JSON.stringify({ action: "saveMaterialUsage", records: rates })
+    }).catch(e => {
+      console.warn("Apps Script redirect blocked (normal):", e);
+    });
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return true;
+  } catch (err) {
+    console.error("Error saving material usage rates:", err);
+    return false;
+  }
 }
 
 export async function fetchInventoryData(): Promise<{ records: InventoryRawRecord[]; errors: string[] }> {
@@ -162,7 +176,7 @@ export async function fetchInventoryData(): Promise<{ records: InventoryRawRecor
         // Keep only the latest entry per section and rubberCode
         const latestRecordsMap = new Map<string, InventoryRawRecord>();
         for (const record of allRecords) {
-            const key = `${record.section}_${record.rubberCode}`;
+            const key = `${record.section.trim().toUpperCase()}_${record.rubberCode.trim().toUpperCase()}`;
             const existing = latestRecordsMap.get(key);
             if (!existing || record.timestamp.getTime() >= existing.timestamp.getTime()) {
                 latestRecordsMap.set(key, record);

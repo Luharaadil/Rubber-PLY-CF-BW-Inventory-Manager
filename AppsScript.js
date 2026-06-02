@@ -17,41 +17,77 @@ function doPost(e) {
     const action = data.action;
 
     if (action === "saveInventory") {
-      const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-      let sheet = ss.getSheetByName('Inventory');
-      if (!sheet) {
-        sheet = ss.insertSheet('Inventory');
-      }
-      
-      // Clear all existing data
-      sheet.clearContent();
-      
-      // Setup headers
-      sheet.appendRow(['Section', 'Material Name', 'Batches/Rolls', 'Last Updated']);
-      
-      if (data.records && data.records.length > 0) {
-        const rows = data.records.map(r => [
-          r.section || '',
-          r.materialName || '',
-          r.batchesOrRolls || 0,
-          r.lastUpdated || new Date().toISOString()
-        ]);
-        
-        // Write all rows starting from row 2
-        sheet.getRange(2, 1, rows.length, 4).setValues(rows);
-      }
-      
-      return ContentService.createTextOutput(JSON.stringify({ success: true }))
-        .setMimeType(ContentService.MimeType.JSON);
+      return saveInventory(data.records);
     }
     
-    return ContentService.createTextOutput(JSON.stringify({ error: "Unknown action" }))
-      .setMimeType(ContentService.MimeType.JSON);
+    if (action === "saveMaterialUsage") {
+      return saveMaterialUsage(data.records);
+    }
+    
+    return createJsonResponse({ error: "Unknown action: " + action });
       
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ error: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ error: err.toString() });
   }
+}
+
+function saveInventory(records) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName('Inventory');
+  if (!sheet) {
+    sheet = ss.insertSheet('Inventory');
+    sheet.appendRow(['Section', 'Material Name', 'Batches/Rolls', 'Last Updated']);
+  }
+  
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
+    const recSection = (rec.section || '').toString().trim();
+    const recMaterial = (rec.materialName || '').toString().trim();
+    const count = parseFloat(rec.batchesOrRolls) || 0;
+    const dateStr = rec.lastUpdated || new Date().toISOString();
+    
+    sheet.appendRow([recSection, recMaterial, count, dateStr]);
+  }
+  
+  return createJsonResponse({ success: true });
+}
+
+function getSheetByGid(ss, gid) {
+  const sheets = ss.getSheets();
+  for (let i = 0; i < sheets.length; i++) {
+    if (sheets[i].getSheetId().toString() === gid.toString()) {
+      return sheets[i];
+    }
+  }
+  return null;
+}
+
+function saveMaterialUsage(records) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = getSheetByGid(ss, '1582193389');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet();
+  }
+  
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, 4).setValues([['Section', 'Category of material', 'Material name', 'Material will use in 1 hour']]);
+  
+  if (records && records.length > 0) {
+    const rows = records.map(r => [
+      r.section || '',
+      r.category || '',
+      r.materialName || '',
+      parseFloat(r.usagePerHour) || 0
+    ]);
+    sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+  }
+  return createJsonResponse({ success: true });
+}
+
+function createJsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e) {
