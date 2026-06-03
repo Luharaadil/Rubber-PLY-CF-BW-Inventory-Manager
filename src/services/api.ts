@@ -70,6 +70,47 @@ function parseSheetDate(dateStr: string): Date | null {
 
 export async function fetchUsers(): Promise<Record<string, {password: string, role: string}>> {
   const users: Record<string, {password: string, role: string}> = {};
+  
+  // Try fetching as CSV first because Google Sheets CSV export doesn't drop mixed text/number columns
+  try {
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${NEW_SHEET_ID}/export?format=csv&gid=1782887198&_=${new Date().getTime()}`;
+    const response = await fetch(csvUrl);
+    if (response.ok) {
+      const csvText = await response.text();
+      const lines = csvText.split(/\r?\n/);
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Simple CSV splitter that handles optional surrounding quotes
+        const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(col => {
+          let cleaned = col.trim();
+          if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+            cleaned = cleaned.slice(1, -1);
+          }
+          return cleaned.replace(/""/g, '"');
+        });
+
+        if (parts.length >= 2) {
+          const userIdVal = parts[0] ? String(parts[0]).trim() : "";
+          if (userIdVal) {
+            users[userIdVal] = {
+              password: parts[1] ? String(parts[1]).trim() : "",
+              role: parts[2] ? String(parts[2]).trim() : "User",
+            };
+          }
+        }
+      }
+      
+      if (Object.keys(users).length > 0) {
+        return users;
+      }
+    }
+  } catch (csvErr) {
+    console.warn("Failed to fetch users via CSV export, falling back to JSONP gviz:", csvErr);
+  }
+
+  // Fallback to original JSONP/gviz method if CSV fetch fails
   try {
     const rows = await fetchSheetData(NEW_SHEET_ID, undefined, "1782887198");
     for (let i = 1; i < rows.length; i++) {
@@ -85,7 +126,7 @@ export async function fetchUsers(): Promise<Record<string, {password: string, ro
       }
     }
   } catch (err) {
-    console.error("Error fetching users:", err);
+    console.error("Error fetching users via fallback:", err);
   }
   return users;
 }
@@ -97,11 +138,14 @@ export async function fetchConsumptionRates(): Promise<MaterialUsageRate[]> {
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       if (row.length >= 3 && (row[0] || row[2])) {
+        const categoryVal = String(row[1] || "").trim();
+        const stdVal = row.length > 4 && row[4] !== undefined && row[4] !== "" ? parseFloat(row[4]) : (categoryVal.toLowerCase() === "rubber" ? 24 : 120);
         usageRates.push({
           section: String(row[0] || "").trim(),
-          category: String(row[1] || "").trim(),
+          category: categoryVal,
           materialName: String(row[2] || "").trim(),
-          usagePerHour: parseFloat(row[3]) || 0
+          usagePerHour: parseFloat(row[3]) || 0,
+          standardTargetHours: isNaN(stdVal) ? (categoryVal.toLowerCase() === "rubber" ? 24 : 120) : stdVal
         });
       }
     }
@@ -127,6 +171,57 @@ export async function saveConsumptionRates(rates: MaterialUsageRate[]): Promise<
     return true;
   } catch (err) {
     console.error("Error saving material usage rates:", err);
+    return false;
+  }
+}
+
+export async function fetchThresholds(): Promise<{ dangerThreshold: number; overstockThreshold: number }> {
+  try {
+    // Attempt fetching the thresholds sheet by name
+    const rows = await fetchSheetData(NEW_SHEET_ID, "Thresholds");
+    let dangerThreshold = 4;
+    let overstockThreshold = 36;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.length >= 2) {
+        const key = String(row[0] || "").trim();
+        const value = parseFloat(row[1]);
+        if (!isNaN(value)) {
+          if (key === "dangerThreshold") {
+            dangerThreshold = value;
+          } else if (key === "overstockThreshold") {
+            overstockThreshold = value;
+          }
+        }
+      }
+    }
+    return { dangerThreshold, overstockThreshold };
+  } catch (err) {
+    console.warn("Thresholds sheet might not exist yet, defaulting to 4 and 36:", err);
+    return { dangerThreshold: 4, overstockThreshold: 36 };
+  }
+}
+
+export async function saveThresholds(danger: number, overstock: number): Promise<boolean> {
+  try {
+    fetch(MACRO_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain",
+      },
+      body: JSON.stringify({
+        action: "saveThresholds",
+        dangerThreshold: danger,
+        overstockThreshold: overstock
+      })
+    }).catch(e => {
+      console.warn("Apps Script redirect blocked (normal):", e);
+    });
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return true;
+  } catch (err) {
+    console.error("Error saving thresholds:", err);
     return false;
   }
 }

@@ -16,17 +16,24 @@ export function Login() {
     setError("");
 
     try {
+      const trimmedId = userId.trim();
+      
       // Fallback admin
-      if (userId === "180044" && password === "MX180044") {
-        login({ id: userId, role: "Admin" });
+      if (trimmedId === "180044" && password === "MX180044") {
+        login({ id: "180044", role: "Admin" });
         return;
       }
 
       const users = await fetchUsers();
       
-      const user = users[userId];
+      // Find matching key case-insensitively
+      const matchedKey = Object.keys(users).find(
+        (key) => key.toLowerCase() === trimmedId.toLowerCase()
+      );
+
+      const user = matchedKey ? users[matchedKey] : undefined;
       if (user && user.password === password) {
-        login({ id: userId, role: user.role });
+        login({ id: matchedKey || trimmedId, role: user.role });
       } else {
         setError("Invalid user ID or password");
       }

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, Save, Plus, Trash2, RefreshCw } from "lucide-react";
 import { useSettings } from "../store/SettingsContext";
 import { MaterialUsageRate } from "../types";
-import { saveConsumptionRates } from "../services/api";
+import { saveConsumptionRates, saveThresholds } from "../services/api";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { useAuth } from "../store/AuthContext";
@@ -16,10 +16,12 @@ const SECTIONS = ["Mixing", "Extrusion", "Cutting", "Calendering"];
 const CATEGORIES = ["Rubber", "PLY", "CH", "BW"];
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { settings, syncMaterialUsages } = useSettings();
+  const { settings, syncMaterialUsages, syncThresholds } = useSettings();
   
   // Local list of usages copied from global context for in-modal staging edits
   const [usagesList, setUsagesList] = useState<MaterialUsageRate[]>([]);
+  const [dangerThreshold, setDangerThreshold] = useState<string>("4");
+  const [overstockThreshold, setOverstockThreshold] = useState<string>("36");
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   
@@ -29,21 +31,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // Keep track of typed input string values for row usage rates to prevent decimal truncations while typing (e.g., "0.0")
   const [inputStates, setInputStates] = useState<Record<number, string>>({});
+  const [stdInputStates, setStdInputStates] = useState<Record<number, string>>({});
 
   // State for adding a new material row
   const [newSection, setNewSection] = useState("Mixing");
   const [newCategory, setNewCategory] = useState("Rubber");
   const [newMaterialName, setNewMaterialName] = useState("");
   const [newUsagePerHour, setNewUsagePerHour] = useState("");
+  const [newStandardTargetHours, setNewStandardTargetHours] = useState("");
 
   // Copy context items to local state on open
   useEffect(() => {
     if (isOpen) {
       setUsagesList(settings.materialUsages.map(item => ({ ...item })));
+      setDangerThreshold(String(settings.dangerThreshold ?? 4));
+      setOverstockThreshold(String(settings.overstockThreshold ?? 36));
       setInputStates({});
+      setStdInputStates({});
       setSuccessMsg(null);
+      setNewStandardTargetHours(newCategory === "Rubber" ? "24" : "120");
     }
-  }, [isOpen, settings.materialUsages]);
+  }, [isOpen, settings.materialUsages, settings.dangerThreshold, settings.overstockThreshold]);
+
+  // Synchronize newStandardTargetHours on category change
+  useEffect(() => {
+    setNewStandardTargetHours(newCategory === "Rubber" ? "24" : "120");
+  }, [newCategory]);
 
   const { user } = useAuth();
 
@@ -53,16 +66,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleAddUsageRow = () => {
     if (!newMaterialName.trim() || isNaN(parseFloat(newUsagePerHour))) return;
     
+    const parsedStd = parseFloat(newStandardTargetHours);
     const newRecord: MaterialUsageRate = {
       section: newSection,
       category: newCategory,
       materialName: newMaterialName.trim().toUpperCase(),
-      usagePerHour: parseFloat(newUsagePerHour) || 0
+      usagePerHour: parseFloat(newUsagePerHour) || 0,
+      standardTargetHours: isNaN(parsedStd) ? (newCategory === "Rubber" ? 24 : 120) : parsedStd
     };
 
     setUsagesList(prev => [...prev, newRecord]);
     setNewMaterialName("");
     setNewUsagePerHour("");
+    setNewStandardTargetHours(newCategory === "Rubber" ? "24" : "120");
   };
 
   const handleFieldChange = (index: number, field: keyof MaterialUsageRate, value: any) => {
@@ -81,15 +97,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setSaving(true);
     setSuccessMsg(null);
     try {
-      const success = await saveConsumptionRates(usagesList);
-      if (success) {
+      const parsedDanger = parseFloat(dangerThreshold);
+      const parsedOverstock = parseFloat(overstockThreshold);
+      
+      const dangerVal = isNaN(parsedDanger) ? 4 : parsedDanger;
+      const overstockVal = isNaN(parsedOverstock) ? 36 : parsedOverstock;
+
+      const [ratesSuccess, thresholdsSuccess] = await Promise.all([
+        saveConsumptionRates(usagesList),
+        saveThresholds(dangerVal, overstockVal)
+      ]);
+
+      if (ratesSuccess && thresholdsSuccess) {
         syncMaterialUsages(usagesList);
-        setSuccessMsg("Successfully saved material usage configurations to Google Sheets!");
+        syncThresholds(dangerVal, overstockVal);
+        setSuccessMsg("Successfully saved material usage configurations and thresholds to Google Sheets!");
         setTimeout(() => {
           setSuccessMsg(null);
         }, 3000);
       } else {
-        alert("Failed to save to sheet. Please try again.");
+        alert("Failed to save some settings to Google Sheets. Please check configuration & credentials.");
       }
     } catch (err) {
       console.error("Failed to save configurations", err);
@@ -180,6 +207,47 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             </div>
 
+            {/* Color Threshold Alerts Settings */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 sm:p-4 space-y-3">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alert Color & Hourly Thresholds</h4>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5 text-left">
+                  <span className="block text-[10px] font-bold text-slate-500 uppercase">
+                    Danger alert threshold (Hours <span className="text-rose-600 font-bold font-mono">Red</span>):
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="any"
+                      value={dangerThreshold}
+                      onChange={(e) => setDangerThreshold(e.target.value)}
+                      className="w-24 px-2 py-1 bg-white border border-slate-200 rounded font-mono text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-center"
+                      placeholder="e.g. 4"
+                    />
+                    <span className="text-[10px] text-slate-400 uppercase font-bold">Hours and below</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <span className="block text-[10px] font-bold text-slate-500 uppercase">
+                    Overstock alert threshold (Hours <span className="text-amber-600 font-bold font-mono">Yellow</span>):
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="any"
+                      value={overstockThreshold}
+                      onChange={(e) => setOverstockThreshold(e.target.value)}
+                      className="w-24 px-2 py-1 bg-white border border-slate-200 rounded font-mono text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-center"
+                      placeholder="e.g. 36"
+                    />
+                    <span className="text-[10px] text-slate-400 uppercase font-bold">Hours and above</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* List Table */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -200,10 +268,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <table className="w-full text-left text-xs min-w-[700px]">
                   <thead className="bg-slate-50 border-b border-slate-200 text-[9px] uppercase font-black text-slate-400">
                     <tr>
-                      <th className="px-3 py-2 w-[22%]">Section</th>
-                      <th className="px-3 py-2 w-[18%]">Category</th>
-                      <th className="px-3 py-2 w-[35%]">Material Name</th>
-                      <th className="px-3 py-2 w-[17%]">Usage in 1 Hour</th>
+                      <th className="px-3 py-2 w-[18%]">Section</th>
+                      <th className="px-3 py-2 w-[14%]">Category</th>
+                      <th className="px-3 py-2 w-[22%]">Material Name</th>
+                      <th className="px-3 py-2 w-[18%]">Usage in 1 Hour</th>
+                      <th className="px-3 py-2 w-[20%]">Std. Target Hours</th>
                       <th className="px-3 py-2 w-[8%] text-right">Actions</th>
                     </tr>
                   </thead>
@@ -213,6 +282,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       const inputValue = originalIndex in inputStates
                         ? inputStates[originalIndex]
                         : (item.usagePerHour === 0 ? "" : String(item.usagePerHour));
+                      const stdInputValue = originalIndex in stdInputStates
+                        ? stdInputStates[originalIndex]
+                        : (item.standardTargetHours === undefined ? "" : String(item.standardTargetHours));
                       return (
                         <tr key={originalIndex} className="hover:bg-slate-50/55">
                           <td className="px-3 py-1.5">
@@ -257,10 +329,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     handleFieldChange(originalIndex, 'usagePerHour', isNaN(parsedNum) ? 0 : parsedNum);
                                   }
                                 }}
-                                className="w-24 text-center font-mono text-xs font-bold border border-slate-200 rounded px-2 py-1"
+                                className="w-16 text-center font-mono text-xs font-bold border border-slate-200 rounded px-2 py-1"
                               />
                               <span className="text-[10px] uppercase font-black text-slate-400">
-                                {isRubber ? "batches/hr" : "rolls/hr"}
+                                {isRubber ? "b/hr" : "r/hr"}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={stdInputValue}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                    setStdInputStates(prev => ({ ...prev, [originalIndex]: val }));
+                                    const parsedNum = parseFloat(val);
+                                    handleFieldChange(originalIndex, 'standardTargetHours', isNaN(parsedNum) ? undefined : parsedNum);
+                                  }
+                                }}
+                                className="w-16 text-center font-mono text-xs font-bold border border-slate-200 rounded px-2 py-1"
+                              />
+                              <span className="text-[10px] uppercase font-black text-slate-400">
+                                hr
                               </span>
                             </div>
                           </td>
@@ -278,7 +371,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     })}
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-xs">
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-xs">
                           No material usage configurations match your filter criteria.
                         </td>
                       </tr>
@@ -294,6 +387,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   const inputValue = originalIndex in inputStates
                     ? inputStates[originalIndex]
                     : (item.usagePerHour === 0 ? "" : String(item.usagePerHour));
+                  const stdInputValue = originalIndex in stdInputStates
+                    ? stdInputStates[originalIndex]
+                    : (item.standardTargetHours === undefined ? "" : String(item.standardTargetHours));
 
                   return (
                     <div key={originalIndex} className="p-3 bg-white rounded-xl border border-slate-200 space-y-3 relative shadow-sm">
@@ -341,26 +437,50 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </div>
                       </div>
 
-                      <div>
-                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Usage rate in 1 hour</span>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={inputValue}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
-                                setInputStates(prev => ({ ...prev, [originalIndex]: val }));
-                                const parsedNum = parseFloat(val);
-                                handleFieldChange(originalIndex, 'usagePerHour', isNaN(parsedNum) ? 0 : parsedNum);
-                              }
-                            }}
-                            className="w-28 text-center font-mono text-xs font-bold border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50 focus:bg-white"
-                          />
-                          <span className="text-[10px] uppercase font-black text-slate-400">
-                            {isRubber ? "batches/hr" : "rolls/hr"}
-                          </span>
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                        <div>
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Usage in 1 Hr</span>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={inputValue}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                  setInputStates(prev => ({ ...prev, [originalIndex]: val }));
+                                  const parsedNum = parseFloat(val);
+                                  handleFieldChange(originalIndex, 'usagePerHour', isNaN(parsedNum) ? 0 : parsedNum);
+                                }
+                              }}
+                              className="w-full text-center font-mono text-xs font-bold border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:bg-white"
+                            />
+                            <span className="text-[9px] uppercase font-black text-slate-400">
+                              {isRubber ? "b/h" : "r/h"}
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Std. Target Hrs</span>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={stdInputValue}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                  setStdInputStates(prev => ({ ...prev, [originalIndex]: val }));
+                                  const parsedNum = parseFloat(val);
+                                  handleFieldChange(originalIndex, 'standardTargetHours', isNaN(parsedNum) ? undefined : parsedNum);
+                                }
+                              }}
+                              className="w-full text-center font-mono text-xs font-bold border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:bg-white"
+                            />
+                            <span className="text-[9px] uppercase font-black text-slate-400">
+                              hr
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -377,7 +497,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Inline Add Row Form */}
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
               <h4 className="text-xs font-black text-slate-600 uppercase tracking-tight mb-3">Add New Material Configuration</h4>
-              <div className="grid gap-3 sm:grid-cols-4 items-end">
+              <div className="grid gap-3 sm:grid-cols-5 items-end">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Section</label>
                   <select
@@ -412,22 +532,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
                     Hourly Rate ({newCategory === "Rubber" ? "Batches" : "Rolls"}/hr)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 1.5"
+                    value={newUsagePerHour}
+                    onChange={(e) => setNewUsagePerHour(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded border border-slate-200 bg-white animate-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                    Std. Target Hours
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       step="any"
-                      placeholder="e.g. 1.5"
-                      value={newUsagePerHour}
-                      onChange={(e) => setNewUsagePerHour(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded border border-slate-200 bg-white"
+                      placeholder={newCategory === "Rubber" ? "24" : "120"}
+                      value={newStandardTargetHours}
+                      onChange={(e) => setNewStandardTargetHours(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded border border-slate-200 bg-white animate-none"
                     />
                     <button
                       onClick={handleAddUsageRow}
                       disabled={!newMaterialName.trim() || !newUsagePerHour}
-                      className="px-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 font-bold rounded text-xs transition-colors py-1.5 flex items-center justify-center flex-shrink-0"
+                      className="px-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 font-bold rounded text-xs transition-colors py-1.5 flex items-center justify-center flex-shrink-0 animate-none"
                     >
                       <Plus className="w-4 h-4" />
                     </button>

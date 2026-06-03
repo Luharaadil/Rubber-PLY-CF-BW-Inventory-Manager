@@ -3,10 +3,13 @@ export interface MaterialUsageRate {
   category: string;
   materialName: string;
   usagePerHour: number;
+  standardTargetHours?: number;
 }
 
 export interface AppSettings {
   materialUsages: MaterialUsageRate[];
+  dangerThreshold?: number;
+  overstockThreshold?: number;
 }
 
 export interface InventoryRawRecord {

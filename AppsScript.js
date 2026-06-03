@@ -24,6 +24,10 @@ function doPost(e) {
       return saveMaterialUsage(data.records);
     }
     
+    if (action === "saveThresholds") {
+      return saveThresholds(data.dangerThreshold, data.overstockThreshold);
+    }
+    
     return createJsonResponse({ error: "Unknown action: " + action });
       
   } catch (err) {
@@ -71,17 +75,33 @@ function saveMaterialUsage(records) {
   }
   
   sheet.clearContents();
-  sheet.getRange(1, 1, 1, 4).setValues([['Section', 'Category of material', 'Material name', 'Material will use in 1 hour']]);
+  sheet.getRange(1, 1, 1, 5).setValues([['Section', 'Category of material', 'Material name', 'Material will use in 1 hour', 'Standard hours to maintain']]);
   
   if (records && records.length > 0) {
     const rows = records.map(r => [
       r.section || '',
       r.category || '',
       r.materialName || '',
-      parseFloat(r.usagePerHour) || 0
+      parseFloat(r.usagePerHour) || 0,
+      parseFloat(r.standardTargetHours) || (r.category === 'Rubber' ? 24 : 120)
     ]);
-    sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+    sheet.getRange(2, 1, rows.length, 5).setValues(rows);
   }
+  return createJsonResponse({ success: true });
+}
+
+function saveThresholds(danger, overstock) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName('Thresholds');
+  if (!sheet) {
+    sheet = ss.insertSheet('Thresholds');
+  }
+  
+  sheet.clearContents();
+  sheet.appendRow(['Key', 'Value']);
+  sheet.appendRow(['dangerThreshold', typeof danger !== 'undefined' ? danger : 4]);
+  sheet.appendRow(['overstockThreshold', typeof overstock !== 'undefined' ? overstock : 36]);
+  
   return createJsonResponse({ success: true });
 }
 

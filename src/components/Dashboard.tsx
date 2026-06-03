@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { format, addHours } from "date-fns";
 import * as htmlToImage from "html-to-image";
-import { fetchInventoryData, fetchConsumptionRates, saveInventoryData } from "../services/api";
+import { fetchInventoryData, fetchConsumptionRates, saveInventoryData, fetchThresholds } from "../services/api";
 import { InventoryRawRecord } from "../types";
 import { useSettings } from "../store/SettingsContext";
 import { useAuth } from "../store/AuthContext";
@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from "motion/react";
 
 export function Dashboard() {
   const { user, logout } = useAuth();
-  const { settings, syncMaterialUsages } = useSettings();
+  const { settings, syncMaterialUsages, syncThresholds } = useSettings();
   
   const [allRecords, setAllRecords] = useState<InventoryRawRecord[]>([]);
   const [originalRecords, setOriginalRecords] = useState<InventoryRawRecord[]>([]);
@@ -42,12 +42,17 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [inventoryResponse, rates] = await Promise.all([
+      const [inventoryResponse, rates, thresholds] = await Promise.all([
         fetchInventoryData(),
-        fetchConsumptionRates()
+        fetchConsumptionRates(),
+        fetchThresholds()
       ]);
       
       const records = [...inventoryResponse.records];
+      
+      if (thresholds) {
+        syncThresholds(thresholds.dangerThreshold, thresholds.overstockThreshold);
+      }
       
       if (rates.length > 0) {
         syncMaterialUsages(rates);
@@ -209,11 +214,16 @@ export function Dashboard() {
     const recordsToCopy = getFilteredRecords();
     if (recordsToCopy.length === 0) return;
     
-    const now = new Date();
-    const dMM = format(now, "dMM");
-    const ddMM_hhmm_a = format(now, "ddMM_hh:mm a");
+    let shortSection = "ALL";
+    if (filterSection === "Mixing") shortSection = "MX";
+    else if (filterSection === "Extrusion") shortSection = "EX";
+    else if (filterSection === "Cutting") shortSection = "CT";
+    else if (filterSection === "Calendering") shortSection = "CL";
 
-    let fullText = `${dMM} Inventory\n${ddMM_hhmm_a}\n\n--------------------\n`;
+    const now = new Date();
+    const timestampStr = format(now, "ddMM_hh:mm a");
+
+    let fullText = `${shortSection} Inventory\n${timestampStr}\n\n--------------------\n`;
 
     const categoryMin: Record<string, number> = {};
 
@@ -221,12 +231,22 @@ export function Dashboard() {
       const { remainingHrs } = calculateMetrics(r);
       const isRubber = isRubberRecord(r);
       const recordCategory = getRecordCategory(r);
-      const base = isRubber ? "24 hr" : "120 hr";
+
+      const rateItem = settings.materialUsages.find(mu => 
+        mu.materialName.toUpperCase() === r.rubberCode.toUpperCase() &&
+        mu.section.toUpperCase() === r.section.toUpperCase()
+      ) || settings.materialUsages.find(mu => 
+        mu.materialName.toUpperCase() === r.rubberCode.toUpperCase()
+      );
+
+      const defaultHrs = isRubber ? 24 : 120;
+      const stdHrs = rateItem && rateItem.standardTargetHours !== undefined ? rateItem.standardTargetHours : defaultHrs;
 
       const qtyStr = r.batchesOrRolls !== undefined ? r.batchesOrRolls.toFixed(1) : "0.0";
       const remainingStr = remainingHrs !== null ? formatRemainingHrs(remainingHrs) : "N/A";
+      const unitStr = isRubber ? "Batch" : "Roll";
       
-      fullText += `\n${r.rubberCode}\n${qtyStr}_${remainingStr}/ ${base}\n`;
+      fullText += `\n${r.rubberCode}\n${qtyStr} ${unitStr}\n${remainingStr} hr / ${stdHrs} hr\n`;
 
       if (remainingHrs !== null) {
         const cat = recordCategory; 
@@ -589,8 +609,8 @@ export function Dashboard() {
                           const { remainingHrs, finishTime } = calculateMetrics(r);
                           const isRubber = isRubberRecord(r);
                           
-                          const isDanger = remainingHrs !== null && remainingHrs < 4;
-                          const isOverstock = remainingHrs !== null && remainingHrs > 36;
+                          const isDanger = remainingHrs !== null && remainingHrs < (settings.dangerThreshold ?? 4);
+                          const isOverstock = remainingHrs !== null && remainingHrs > (settings.overstockThreshold ?? 36);
                           
                           return (
                             <tr key={originalIndex} className="hover:bg-slate-50/80 transition-colors">
@@ -699,8 +719,8 @@ export function Dashboard() {
                           const { remainingHrs, finishTime } = calculateMetrics(r);
                           const isRubber = isRubberRecord(r);
                           
-                          const isDanger = remainingHrs !== null && remainingHrs < 4;
-                          const isOverstock = remainingHrs !== null && remainingHrs > 36;
+                          const isDanger = remainingHrs !== null && remainingHrs < (settings.dangerThreshold ?? 4);
+                          const isOverstock = remainingHrs !== null && remainingHrs > (settings.overstockThreshold ?? 36);
                           
                           return (
                             <React.Fragment key={`mobile-${originalIndex}`}>

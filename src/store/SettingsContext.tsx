@@ -3,6 +3,8 @@ import { AppSettings, MaterialUsageRate } from "../types";
 
 const DEFAULT_SETTINGS: AppSettings = {
   materialUsages: [],
+  dangerThreshold: 4,
+  overstockThreshold: 36,
 };
 
 interface SettingsContextType {
@@ -11,6 +13,7 @@ interface SettingsContextType {
   addMaterialUsage: (rate: MaterialUsageRate) => void;
   removeMaterialUsage: (index: number) => void;
   syncMaterialUsages: (rates: MaterialUsageRate[]) => void;
+  syncThresholds: (danger: number, overstock: number) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -62,8 +65,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }));
   };
 
+  const syncThresholds = (danger: number, overstock: number) => {
+    setSettings((prev) => ({
+      ...prev,
+      dangerThreshold: danger,
+      overstockThreshold: overstock,
+    }));
+  };
+
   return (
-    <SettingsContext.Provider value={{ settings, updateMaterialUsage, addMaterialUsage, removeMaterialUsage, syncMaterialUsages }}>
+    <SettingsContext.Provider value={{ settings, updateMaterialUsage, addMaterialUsage, removeMaterialUsage, syncMaterialUsages, syncThresholds }}>
       {children}
     </SettingsContext.Provider>
   );
