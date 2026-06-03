@@ -117,25 +117,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] overflow-auto flex flex-col"
+          className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col m-2"
         >
           {/* Header */}
-          <div className="sticky top-0 z-10 bg-slate-50 p-6 border-b border-slate-200 flex items-center justify-between">
+          <div className="sticky top-0 z-10 bg-slate-50 p-4 sm:p-6 border-b border-slate-200 flex items-center justify-between">
             <div>
               <h2 className="text-base font-black text-slate-800 uppercase tracking-tight">System Settings</h2>
               <p className="text-xs text-slate-500 font-medium">Configure hourly usage rates of materials</p>
             </div>
-            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors">
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+          <div className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto">
             {/* Filter Buttons in settings per Requirement 2 */}
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 sm:p-4 space-y-3">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filter Configurations View</h4>
               
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div className="space-y-1">
                   <span className="block text-[10px] font-bold text-slate-500 uppercase">Section selection:</span>
                   <div className="flex flex-wrap gap-1">
@@ -195,15 +195,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
               )}
 
-              <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-black text-slate-400">
+              {/* Desktop Table View */}
+              <div className="hidden md:block bg-white border border-slate-200 rounded-lg overflow-x-auto select-none">
+                <table className="w-full text-left text-xs min-w-[700px]">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[9px] uppercase font-black text-slate-400">
                     <tr>
-                      <th className="px-4 py-3">Section</th>
-                      <th className="px-4 py-3">Category</th>
-                      <th className="px-4 py-3">Material Name</th>
-                      <th className="px-4 py-3">Usage in 1 Hour</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-3 py-2 w-[22%]">Section</th>
+                      <th className="px-3 py-2 w-[18%]">Category</th>
+                      <th className="px-3 py-2 w-[35%]">Material Name</th>
+                      <th className="px-3 py-2 w-[17%]">Usage in 1 Hour</th>
+                      <th className="px-3 py-2 w-[8%] text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -214,7 +215,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         : (item.usagePerHour === 0 ? "" : String(item.usagePerHour));
                       return (
                         <tr key={originalIndex} className="hover:bg-slate-50/55">
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-1.5">
                             <select
                               value={item.section}
                               onChange={(e) => handleFieldChange(originalIndex, 'section', e.target.value)}
@@ -223,7 +224,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-1.5">
                             <select
                               value={item.category}
                               onChange={(e) => {
@@ -234,7 +235,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-1.5">
                             <input
                               type="text"
                               value={item.materialName}
@@ -242,7 +243,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               className="w-full font-mono text-xs border border-slate-200 rounded px-2 py-1 bg-white font-bold"
                             />
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-1.5">
                             <div className="flex items-center gap-2">
                               <input
                                 type="text"
@@ -263,10 +264,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-2 text-right">
+                          <td className="px-3 py-1.5 text-right">
                             <button 
                               onClick={() => handleDeleteRow(originalIndex)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+                              className="p-1 text-rose-500 hover:bg-rose-50 rounded transition-colors inline-flex"
                               title="Delete row"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -284,6 +285,92 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Cards View */}
+              <div className="block md:hidden space-y-3 max-h-[45vh] overflow-y-auto pr-1">
+                {filteredItems.map(({ item, originalIndex }) => {
+                  const isRubber = item.category.toLowerCase() === "rubber" || /^\d{4}F$/i.test(item.materialName);
+                  const inputValue = originalIndex in inputStates
+                    ? inputStates[originalIndex]
+                    : (item.usagePerHour === 0 ? "" : String(item.usagePerHour));
+
+                  return (
+                    <div key={originalIndex} className="p-3 bg-white rounded-xl border border-slate-200 space-y-3 relative shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1">
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Material Name</span>
+                          <input
+                            type="text"
+                            value={item.materialName}
+                            onChange={(e) => handleFieldChange(originalIndex, 'materialName', e.target.value.toUpperCase())}
+                            className="w-full font-mono text-xs border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50 font-bold focus:bg-white"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteRow(originalIndex)}
+                          className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-rose-100 bg-white mt-4 flex-shrink-0"
+                          title="Delete row"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Section</span>
+                          <select
+                            value={item.section}
+                            onChange={(e) => handleFieldChange(originalIndex, 'section', e.target.value)}
+                            className="w-full border border-slate-200 rounded px-2.5 py-1.5 text-xs outline-none bg-slate-50 focus:bg-white font-medium"
+                          >
+                            {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Category</span>
+                          <select
+                            value={item.category}
+                            onChange={(e) => {
+                              handleFieldChange(originalIndex, 'category', e.target.value);
+                            }}
+                            className="w-full border border-slate-200 rounded px-2.5 py-1.5 text-xs outline-none bg-slate-50 focus:bg-white font-medium"
+                          >
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Usage rate in 1 hour</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={inputValue}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                setInputStates(prev => ({ ...prev, [originalIndex]: val }));
+                                const parsedNum = parseFloat(val);
+                                handleFieldChange(originalIndex, 'usagePerHour', isNaN(parsedNum) ? 0 : parsedNum);
+                              }
+                            }}
+                            className="w-28 text-center font-mono text-xs font-bold border border-slate-200 rounded px-2.5 py-1.5 bg-slate-50 focus:bg-white"
+                          />
+                          <span className="text-[10px] uppercase font-black text-slate-400">
+                            {isRubber ? "batches/hr" : "rolls/hr"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredItems.length === 0 && (
+                  <div className="p-8 text-center text-slate-400 text-xs bg-white rounded-xl border border-slate-150">
+                    No material usage configurations match your filter criteria.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -351,7 +438,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* Sticky footer with actions */}
-          <div className="sticky bottom-0 bg-slate-50 p-6 border-t border-slate-200 flex items-center justify-between">
+          <div className="sticky bottom-0 bg-slate-50 p-4 sm:p-6 border-t border-slate-200 flex items-center justify-between">
             <button
               onClick={onClose}
               className="px-4 py-2 border border-slate-200 rounded text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 transition-all uppercase tracking-wider"

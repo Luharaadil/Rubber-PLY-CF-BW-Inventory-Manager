@@ -8,6 +8,7 @@ import { useAuth } from "../store/AuthContext";
 import { SettingsModal } from "./SettingsModal";
 import { Settings2, RefreshCw, AlertCircle, Camera, LogOut, Copy, Edit2, Save, X, Plus, Check } from "lucide-react";
 import { cn } from "../lib/utils";
+import { motion, AnimatePresence } from "motion/react";
 
 export function Dashboard() {
   const { user, logout } = useAuth();
@@ -22,6 +23,7 @@ export function Dashboard() {
   
   const [copying, setCopying] = useState(false);
   const [copyingText, setCopyingText] = useState(false);
+  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false });
 
   const [filterSection, setFilterSection] = useState<string>("ALL");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(["Rubber", "PLY", "CH", "BW"]);
@@ -162,13 +164,20 @@ export function Dashboard() {
   };
 
   const handleCopyPicture = async () => {
-    if (!printRef.current) return;
+    const isMobile = window.innerWidth < 768; // 768px is md breakpoint in Tailwind CSS
+    const targetElement = isMobile 
+      ? document.getElementById("full-dashboard-capture") 
+      : printRef.current;
+
+    if (!targetElement) return;
     setCopying(true);
+    // Flush the DOM updates so any visual elements settle before raw canvas snapshot
+    await new Promise(resolve => setTimeout(resolve, 120));
     try {
-      const blob = await htmlToImage.toBlob(printRef.current, {
+      const blob = await htmlToImage.toBlob(targetElement, {
         pixelRatio: 2.5,
-        backgroundColor: "#ffffff",
-        style: {
+        backgroundColor: isMobile ? "#f8fafc" : "#ffffff", // slate-50 background for full dashboard capture on mobile, white for card capture
+        style: isMobile ? {} : {
           padding: "16px",
           borderRadius: "8px"
         },
@@ -177,6 +186,10 @@ export function Dashboard() {
       if (!blob) throw new Error("Failed to generate image blob");
       const item = new ClipboardItem({ "image/png": blob });
       await navigator.clipboard.write([item]);
+      
+      setToast({ message: "📸 Snapshot copied to clipboard!", visible: true });
+      setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500);
+
       setTimeout(() => setCopying(false), 1500);
     } catch (err) {
       console.error("Clipboard write failed", err);
@@ -232,6 +245,10 @@ export function Dashboard() {
 
     navigator.clipboard.writeText(fullText.trim());
     setCopyingText(true);
+    
+    setToast({ message: "📋 Minimalist text inventory copied!", visible: true });
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 2500);
+
     setTimeout(() => setCopyingText(false), 2000);
   };
 
@@ -299,21 +316,21 @@ export function Dashboard() {
   const categoryOptions = ["Rubber", "PLY", "CH", "BW"];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 pb-16">
+    <div id="full-dashboard-capture" className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 pb-16">
       {/* Header Dashboard bar */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm print:hidden">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex flex-col items-start flex-1">
-            <h1 className="text-xl font-black tracking-tight text-slate-800 uppercase flex items-center gap-2">
-              <span className="w-2.5 h-6 bg-indigo-600 rounded"></span>
+        <div className="max-w-full mx-auto px-2 sm:px-4 md:px-6 py-3 md:py-4 flex flex-row justify-between items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <span className="w-2 md:w-2.5 h-5 md:h-6 bg-indigo-600 rounded flex-shrink-0"></span>
+            <h1 className="text-xs sm:text-sm md:text-xl font-black tracking-tight text-slate-800 uppercase">
               Inventory Manager
             </h1>
           </div>
           
-          <div className="flex items-center gap-2 hide-in-print">
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2 hide-in-print ml-auto flex-shrink-0">
             {isDirty && (
-              <span className="text-[10px] bg-amber-50 text-amber-700 font-black border border-amber-200 px-3 py-1.5 rounded uppercase tracking-widest animate-pulse mr-2 flex items-center gap-1">
-                Unsaved Edits Detected
+              <span className="text-[9px] sm:text-[10px] bg-amber-100 text-amber-800 font-black border border-amber-300 px-2 sm:px-3 py-1 rounded uppercase tracking-wider animate-pulse flex items-center gap-1 flex-shrink-0">
+                Unsaved Edits
               </span>
             )}
 
@@ -321,48 +338,78 @@ export function Dashboard() {
               <button 
                 onClick={handleSave} 
                 disabled={saving}
-                className="px-4 py-2 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center shadow-md animate-bounce"
+                className="px-2.5 py-1.5 sm:px-4 sm:py-2 text-[10px] sm:text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center shadow-sm"
               >
-                {saving ? <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
-                Save Changes
+                {saving ? <RefreshCw className="w-3.5 h-3.5 mr-1 sm:mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1 sm:mr-1.5" />}
+                <span className="hidden xs:inline">Save</span>
               </button>
             )}
 
             {isDirty && (
               <button 
                 onClick={handleCancelEdits}
-                className="px-4 py-2 text-xs font-bold rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center shadow-sm"
+                className="px-2 py-1.5 sm:px-4 sm:py-2 text-[10px] sm:text-xs font-bold rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center shadow-sm"
               >
-                <X className="w-4 h-4 mr-1.5" />
-                Cancel
+                <X className="w-3.5 h-3.5 mr-1 sm:mr-1.5" />
+                <span className="hidden xs:inline">Cancel</span>
               </button>
             )}
 
             {!isDirty && (
               <>
-                <button onClick={copyText} className="px-3 py-2 text-xs font-bold rounded shadow-sm transition-colors flex items-center bg-white border-slate-200 text-slate-700 hover:bg-slate-50 border">
-                  <Copy className="w-4 h-4 mr-1.5" /> {copyingText ? "Copied!" : "Copy Text"}
+                <button 
+                  onClick={copyText} 
+                  className={cn(
+                    "p-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold rounded shadow-sm border transition-all duration-200 flex items-center select-none",
+                    copyingText 
+                      ? "bg-emerald-600 border-emerald-600 text-white" 
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  )} 
+                  title="Copy Text"
+                >
+                  {copyingText ? (
+                    <Check className="w-4 h-4 sm:mr-1.5" />
+                  ) : (
+                    <Copy className="w-4 h-4 sm:mr-1.5" />
+                  )}
+                  <span className="hidden xs:inline">{copyingText ? "Copied!" : "Copy Text"}</span>
                 </button>
-                <button onClick={handleCopyPicture} className="px-3 py-2 text-xs font-bold rounded shadow-sm border transition-colors flex items-center bg-white border-slate-200 text-slate-700 hover:bg-slate-50">
-                  <Camera className="w-4 h-4 mr-1.5" /> {copying ? "Copied!" : "Copy Picture"}
+                <button 
+                  onClick={handleCopyPicture} 
+                  className={cn(
+                    "p-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold rounded shadow-sm border transition-all duration-200 flex items-center select-none",
+                    copying 
+                      ? "bg-emerald-600 border-emerald-600 text-white" 
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  )} 
+                  title="Copy Picture"
+                >
+                  {copying ? (
+                    <Check className="w-4 h-4 sm:mr-1.5" />
+                  ) : (
+                    <Camera className="w-4 h-4 sm:mr-1.5" />
+                  )}
+                  <span className="hidden xs:inline">{copying ? "Copied!" : "Copy Picture"}</span>
                 </button>
                 <button 
                   onClick={handleEditToggle} 
                   className={cn(
-                    "px-3 py-2 text-xs font-bold rounded transition-colors flex items-center shadow-sm",
+                    "p-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold rounded transition-colors flex items-center shadow-sm",
                     editMode ? "bg-slate-700 text-white hover:bg-slate-800" : "bg-indigo-600 text-white hover:bg-indigo-700"
                   )}
+                  title={editMode ? "Exit Structural Edit" : "Edit List Rows"}
                 >
-                  <Edit2 className="w-4 h-4 mr-1.5" /> {editMode ? "Exit Structural Edit" : "Edit List Rows"}
+                  <Edit2 className="w-4 h-4 sm:mr-1.5" /> 
+                  <span className="hidden md:inline">{editMode ? "Exit Edit" : "Edit Rows"}</span>
                 </button>
               </>
             )}
             {user?.role?.toLowerCase() === "admin" && (
-              <button onClick={() => setSettingsOpen(true)} className="p-2 bg-white rounded shadow-sm border border-slate-200 text-slate-600 hover:bg-slate-50" title="System settings">
+              <button onClick={() => setSettingsOpen(true)} className="p-1.5 sm:p-2 bg-white rounded shadow-sm border border-slate-200 text-slate-600 hover:bg-slate-50" title="System settings">
                 <Settings2 className="w-4 h-4" />
               </button>
             )}
-            <button onClick={logout} className="p-2 bg-white rounded shadow-sm border border-slate-200 text-rose-600 hover:bg-rose-50" title="Logout">
+            <button onClick={logout} className="p-1.5 sm:p-2 bg-white rounded shadow-sm border border-slate-200 text-rose-600 hover:bg-rose-50" title="Logout">
               <LogOut className="w-4 h-4" />
             </button>
           </div>
@@ -371,42 +418,43 @@ export function Dashboard() {
 
       {/* Filter and dynamic Last Saved layout - next to Category per Requirement 6 */}
       <div className="bg-white border-b border-slate-200 relative z-20 print:hidden shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-6">
-          <div className="flex flex-col flex-1 max-w-[200px]">
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-              Section Options
-            </label>
-            <select
-              value={filterSection}
-              onChange={(e) => setFilterSection(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded px-3 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none bg-slate-50 font-medium"
-            >
-              <option value="ALL">ALL</option>
-              <option value="Mixing">Mixing</option>
-              <option value="Extrusion">Extrusion</option>
-              <option value="Cutting">Cutting</option>
-              <option value="Calendering">Calendering</option>
-            </select>
-          </div>
-          
-          <div className="flex flex-col flex-1 max-w-[200px] relative">
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-              Category Options
-            </label>
-            <button
-              type="button"
-              onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-              className="w-full text-xs font-semibold border border-slate-200 rounded px-3 py-2 focus:ring-1 focus:ring-indigo-500 outline-none bg-slate-50 text-slate-700 flex justify-between items-center select-none"
-            >
-              <span className="truncate">
-                {selectedCategories.length === 0
-                  ? "None Selected"
-                  : selectedCategories.length === categoryOptions.length
-                  ? "All Categories"
-                  : selectedCategories.join(", ")}
-              </span>
-              <span className="text-[10px] text-slate-400 font-bold ml-1">▼</span>
-            </button>
+        <div className="max-w-full mx-auto px-2 sm:px-4 md:px-6 py-3 sm:py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex flex-row items-center gap-2 sm:gap-4 w-full lg:w-auto">
+            <div className="flex flex-col flex-1 min-w-0 max-w-[180px] sm:max-w-[200px]">
+              <label className="block text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 sm:mb-1.5 truncate">
+                Section Options
+              </label>
+              <select
+                value={filterSection}
+                onChange={(e) => setFilterSection(e.target.value)}
+                className="w-full text-xs sm:text-sm border border-slate-200 rounded px-2 py-1.5 sm:px-3 sm:py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none bg-slate-50 font-medium"
+              >
+                <option value="ALL">ALL</option>
+                <option value="Mixing">Mixing</option>
+                <option value="Extrusion">Extrusion</option>
+                <option value="Cutting">Cutting</option>
+                <option value="Calendering">Calendering</option>
+              </select>
+            </div>
+            
+            <div className="flex flex-col flex-1 min-w-0 max-w-[180px] sm:max-w-[200px] relative">
+              <label className="block text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 sm:mb-1.5 truncate">
+                Category Options
+              </label>
+              <button
+                type="button"
+                onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+                className="w-full text-[11px] sm:text-xs font-semibold border border-slate-200 rounded px-2 py-1.5 sm:px-3 sm:py-2 focus:ring-1 focus:ring-indigo-500 outline-none bg-slate-50 text-slate-700 flex justify-between items-center select-none"
+              >
+                <span className="truncate">
+                  {selectedCategories.length === 0
+                    ? "None"
+                    : selectedCategories.length === categoryOptions.length
+                    ? "All"
+                    : selectedCategories.join(", ")}
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold ml-1 flex-shrink-0">▼</span>
+              </button>
             {categoryDropdownOpen && (
               <>
                 <div 
@@ -457,6 +505,7 @@ export function Dashboard() {
               </>
             )}
           </div>
+        </div>
 
           {/* Last Saved Timestamp Info aligned next to options dropdown bar */}
           <div className="sm:ml-auto flex flex-col sm:items-end justify-center self-end">
@@ -472,7 +521,7 @@ export function Dashboard() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto px-6 py-6 w-full">
+      <main className="flex-1 max-w-full mx-auto px-2 sm:px-4 md:px-6 py-6 w-full">
         {loading && allRecords.length === 0 ? (
           <div className="flex justify-center items-center h-64">
             <RefreshCw className="w-8 h-8 animate-spin text-slate-400" />
@@ -493,27 +542,37 @@ export function Dashboard() {
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden pb-0">
               <div ref={printRef} className="bg-white p-4">
                 
-                {/* Header that only displays in printable image copy */}
-                <div className="hidden show-in-print border-b border-slate-100 pb-3 mb-4 flex justify-between items-center bg-slate-50 p-4 rounded-lg">
+                 {/* Header that only displays in printable image copy or browser print (desktop/tablet only, hidden on mobile) */}
+                <div className={cn(
+                  "border-b border-slate-200 pb-4 mb-4 flex flex-col sm:flex-row justify-between sm:items-center bg-slate-50 p-4 rounded-xl gap-3 text-left",
+                  copying ? "hidden md:flex" : "hidden md:print:flex"
+                )}>
                   <div>
-                    <h2 className="text-lg font-black text-slate-800 uppercase">Live Material Inventory Report</h2>
-                    <p className="text-[11px] text-slate-500 font-bold font-mono uppercase">
-                      Generated: {format(new Date(), "dd-MM-yyyy HH:mm")}
-                    </p>
+                    <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Live Material Inventory Report</h2>
+                    <div className="flex flex-col gap-1 mt-1.5">
+                      <p className="text-[11px] text-slate-500 font-bold font-mono uppercase">
+                        Captured Snapshot: {format(new Date(), "dd-MM-yyyy HH:mm")}
+                      </p>
+                      <div className="text-[11px] text-emerald-700 font-extrabold font-mono uppercase flex items-center mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2 inline-block"></span>
+                        Data Synchronization Status: Saved {lastSaveTime ? format(lastSaveTime, "dd-MM-yyyy HH:mm") : "01-06-2026 12:22"}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Section View</span>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded uppercase">{filterSection}</span>
+                  <div className="text-left sm:text-right flex-shrink-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Section View</span>
+                    <span className="text-xs bg-indigo-100 text-indigo-700 font-black px-2.5 py-1 rounded-lg uppercase inline-block border border-indigo-200/50">{filterSection}</span>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[800px]">
+                {/* Desktop Version Table */}
+                <div className="hidden md:block overflow-hidden">
+                  <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50/70 border-b-2 border-slate-200">
                         <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest w-44">Section</th>
                         <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest w-48">Material Name</th>
-                        <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center w-52">Inventory Count (Editable)</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center w-52">Inventory</th>
                         <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right">Remaining HRS</th>
                         <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right">Finish Time</th>
                         {editMode && <th className="px-4 py-4 hide-in-print w-16 text-right">Delete</th>}
@@ -618,6 +677,120 @@ export function Dashboard() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Mobile Version Table (Material Name, Remaining HRS, Finish Time with downside inline Inventory Count input) */}
+                <div className="block md:hidden w-full">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead>
+                      <tr className="bg-slate-50/70 border-b-2 border-slate-200">
+                        <th className="px-3 py-3 text-[10px] font-black uppercase text-slate-400 tracking-widest w-[38%] text-left">Material Name</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase text-slate-400 tracking-widest w-[28%] text-right">Remaining HRS</th>
+                        <th className="px-3 py-3 text-[10px] font-black uppercase text-slate-400 tracking-widest w-[34%] text-right">Finish Time</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {displayedRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-3 py-12 text-center text-slate-400 text-sm">No records found.</td>
+                        </tr>
+                      ) : (
+                        displayedRecords.map((r) => {
+                          const originalIndex = allRecords.indexOf(r);
+                          const { remainingHrs, finishTime } = calculateMetrics(r);
+                          const isRubber = isRubberRecord(r);
+                          
+                          const isDanger = remainingHrs !== null && remainingHrs < 4;
+                          const isOverstock = remainingHrs !== null && remainingHrs > 36;
+                          
+                          return (
+                            <React.Fragment key={`mobile-${originalIndex}`}>
+                              {/* Row 1: Material Name, Remaining HRS, Finish Time */}
+                              <tr className="bg-white hover:bg-slate-50/50 transition-colors">
+                                <td className="px-3 py-3 text-left">
+                                  {editMode ? (
+                                    <input 
+                                      value={r.rubberCode} 
+                                      onChange={(e) => handleRecordChange(originalIndex, 'rubberCode', e.target.value)}
+                                      className="w-full font-mono text-xs border border-slate-200 rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 bg-white font-bold"
+                                      placeholder="Name"
+                                    />
+                                  ) : (
+                                    <span className="font-mono font-bold text-slate-800 text-xs bg-slate-100/80 px-2 py-0.5 rounded truncate block max-w-full">
+                                      {r.rubberCode}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  {remainingHrs === null ? (
+                                    <span className="text-[10px] font-bold text-slate-300 uppercase">N/A</span>
+                                  ) : (
+                                    <div className="flex justify-end">
+                                      <span className={cn(
+                                        "px-2 py-0.5 rounded font-bold text-[10px] uppercase font-mono text-right",
+                                        isDanger ? "bg-rose-100 text-rose-700" :
+                                        isOverstock ? "bg-amber-100 text-amber-700" :
+                                        "bg-emerald-100 text-emerald-700"
+                                      )}>
+                                        {remainingHrs.toFixed(1)} HR
+                                      </span>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  {finishTime === null ? (
+                                    <span className="text-[10px] font-bold text-slate-300 uppercase font-mono">N/A</span>
+                                  ) : (
+                                    <span className={cn(
+                                      "font-bold text-[10px] font-mono leading-tight block break-words text-right",
+                                      isDanger ? "text-rose-600" : "text-slate-600"
+                                    )}>
+                                      {format(finishTime, "dd-MM-yy HH:mm")}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                              {/* Row 2: Aligned inline column inputs */}
+                              <tr className="bg-slate-50/40 border-b border-slate-200">
+                                <td className="px-3 pb-3 pt-1 text-left">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                    Inventory
+                                  </span>
+                                </td>
+                                <td className="px-3 pb-3 pt-1 text-right">
+                                  <div className="flex justify-end">
+                                    <input 
+                                      type="number"
+                                      step="any"
+                                      value={r.batchesOrRolls ?? 0} 
+                                      onChange={(e) => handleRecordChange(originalIndex, 'batchesOrRolls', parseFloat(e.target.value) || 0)}
+                                      className="w-16 text-center font-mono font-bold text-xs border border-slate-200 rounded px-1.5 py-1 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white shadow-sm"
+                                    />
+                                  </div>
+                                </td>
+                                <td className="px-3 pb-3 pt-1 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider font-mono">
+                                      {isRubber ? "Batches" : "Rolls"}
+                                    </span>
+                                    {editMode && (
+                                      <button 
+                                        onClick={() => handleDeleteRow(originalIndex)} 
+                                        className="text-slate-400 hover:text-rose-500 transition-colors p-0.5 bg-rose-50 rounded border border-rose-100 hover:bg-rose-100 ml-1.5"
+                                        title="Delete material row"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               
               {editMode && (
@@ -652,6 +825,22 @@ export function Dashboard() {
       </main>
 
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Floating Success Toast notification for Copy & Snapshot Feedback */}
+      <AnimatePresence>
+        {toast.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: -24, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: -16, x: "-50%" }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-900/95 backdrop-blur-md px-4 py-2.5 rounded-full border border-white/10 shadow-xl text-white font-sans text-xs font-bold uppercase tracking-wider whitespace-nowrap hide-in-print"
+          >
+            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0 animate-bounce" />
+            <span>{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
